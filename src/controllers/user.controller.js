@@ -1,91 +1,110 @@
+import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import userModel from "../models/user.model.js";
 
 // Get all users
 export const getUsers = async (req, res) => {
-const users = await userModel.find().select("-password");
+  const users = await userModel.find().select("-password");
 
-res.status(200).json({
-users,
-});
+  res.status(200).json({
+    users,
+  });
 };
 
 // Get single user
 export const getUser = async (req, res) => {
-const { id } = req.params;
+  const { id } = req.params;
 
-const user = await userModel.findById(id).select("-password");
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid user ID",
+    });
+  }
 
-if (!user) {
-return res.status(404).json({
-message: "User not found",
-});
-}
+  const user = await userModel.findById(id).select("-password");
 
-res.status(200).json({
-user,
-});
+  if (!user) {
+    return res.status(404).json({
+      message: "User not found",
+    });
+  }
+
+  res.status(200).json({
+    user,
+  });
 };
 
 // Update user
 export const updateUser = async (req, res) => {
-const { id } = req.params;
+  const { id } = req.params;
 
-if (req.user.id !== id && req.user.role !== "admin") {
-return res.status(403).json({
-message: "Forbidden",
-});
-}
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid user ID",
+    });
+  }
 
-const user = await userModel.findById(id);
+  const user = await userModel.findById(id);
 
-if (!user) {
-return res.status(404).json({
-message: "User not found",
-});
-}
+  if (!user) {
+    return res.status(404).json({
+      message: "User not found",
+    });
+  }
 
-const { name, email, password } = req.body;
+  if (req.user.id !== id && req.user.role !== "admin") {
+    return res.status(403).json({
+      message: "Forbidden",
+    });
+  }
 
-if (name) {
-user.name = name;
-}
+  const { name, email, password } = req.body;
 
-if (email) {
-user.email = email;
-}
+  if (name !== undefined) {
+    user.name = name;
+  }
 
-if (password) {
-user.password = bcrypt.hashSync(password, 8);
-}
+  if (email !== undefined) {
+    user.email = email;
+  }
 
-if (req.file) {
-user.avatar = req.file.path;
-}
+  if (password !== undefined) {
+    user.password = bcrypt.hashSync(password, 8);
+  }
 
-await user.save();
+  if (req.file) {
+    user.avatar = req.file.path;
+  }
 
-const updatedUser = await userModel.findById(id).select("-password");
+  await user.save();
 
-res.status(200).json({
-message: "User updated successfully",
-user: updatedUser,
-});
+  const updatedUser = await userModel.findById(id).select("-password");
+
+  res.status(200).json({
+    message: "User updated successfully",
+    user: updatedUser,
+  });
 };
 
 // Delete user
 export const deleteUser = async (req, res) => {
-const { id } = req.params;
+  const { id } = req.params;
 
-const user = await userModel.findByIdAndDelete(id);
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid user ID",
+    });
+  }
 
-if (!user) {
-return res.status(404).json({
-message: "User not found",
-});
-}
+  const user = await userModel.findByIdAndDelete(id);
 
-res.status(200).json({
-message: "User deleted successfully",
-});
+  if (!user) {
+    return res.status(404).json({
+      message: "User not found",
+    });
+  }
+
+  res.status(200).json({
+    message: "User deleted successfully",
+  });
 };
