@@ -1,14 +1,13 @@
 import mongoose from "mongoose";
 
-const connectDB = () => {
-mongoose
-.connect(process.env.DBConnection)
-.then(() => {
-console.log("DB connection is start..");
-})
-.catch((err) => {
-console.log("db connection error ", err);
-});
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.DBConnection);
+    console.log("DB connection established successfully");
+  } catch (error) {
+    console.error("DB connection failed");
+    throw error;
+  }
 };
 
 export default connectDB;
