@@ -1,0 +1,170 @@
+import postModel from "../models/post.model.js";
+import commentModel from "../models/comment.model.js";
+
+// Create Post
+export const createPost = async (req, res) => {
+    const { title, content, category, tags, isPublished } = req.body;
+
+    const post = await postModel.create({
+        title,
+        content,
+        category,
+        tags,
+        isPublished,
+        author: req.user.id,
+        coverImage: req.file ? req.file.path : undefined,
+    });
+
+    res.status(201).json({
+        message: "Post created successfully",
+        post,
+    });
+};
+
+
+// Get All Posts
+export const getPosts = async (req, res) => {
+    const {
+        page = 1,
+        limit = 10,
+        search,
+        category,
+        author,
+        sort = "-createdAt",
+    } = req.query;
+
+    const filter = {};
+
+    if (search) {
+        filter.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { content: { $regex: search, $options: "i" } },
+        ];
+    }
+
+    if (category) {
+        filter.category = category;
+    }
+
+    if (author) {
+        filter.author = author;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const posts = await postModel
+        .find(filter)
+        .populate("author", "name email")
+        .sort(sort)
+        .skip(skip)
+        .limit(Number(limit));
+
+    const total = await postModel.countDocuments(filter);
+
+    res.status(200).json({
+        posts,
+        pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            totalPages: Math.ceil(total / limit),
+        },
+    });
+};
+
+
+// Get Single Post
+export const getPost = async (req, res) => {
+    const { id } = req.params;
+
+    const post = await postModel
+        .findById(id)
+        .populate("author", "name email");
+
+    if (!post) {
+        return res.status(404).json({
+            message: "Post not found",
+        });
+    }
+
+    const comments = await commentModel
+        .find({ post: id })
+        .populate("user", "name email");
+
+    res.status(200).json({
+        post,
+        comments,
+    });
+};
+
+
+// Update Post
+export const updatePost = async (req, res) => {
+    const { id } = req.params;
+    const { title, content, category, tags, isPublished } = req.body;
+
+    const post = await postModel.findById(id);
+
+    if (!post) {
+        return res.status(404).json({
+            message: "Post not found",
+        });
+    }
+
+    // Owner or Admin only
+    if (
+        post.author.toString() !== req.user.id &&
+        req.user.role !== "admin"
+    ) {
+        return res.status(403).json({
+            message: "Forbidden",
+        });
+    }
+
+    post.title = title;
+    post.content = content;
+    post.category = category;
+    post.tags = tags;
+    post.isPublished = isPublished;
+
+    if (req.file) {
+        post.coverImage = req.file.path;
+    }
+
+    await post.save();
+
+    res.status(200).json({
+        message: "Post updated successfully",
+        post,
+    });
+};
+
+
+// Delete Post
+export const deletePost = async (req, res) => {
+    const { id } = req.params;
+
+    const post = await postModel.findById(id);
+
+    if (!post) {
+        return res.status(404).json({
+            message: "Post not found",
+        });
+    }
+
+    // Owner or Admin only
+    if (
+        post.author.toString() !== req.user.id &&
+        req.user.role !== "admin"
+    ) {
+        return res.status(403).json({
+            message: "Forbidden",
+        });
+    }
+
+    await postModel.findByIdAndDelete(id);
+
+    res.status(200).json({
+        message: "Post deleted successfully",
+    });
+};
