@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import postModel from "../models/post.model.js";
 import commentModel from "../models/comment.model.js";
 
@@ -32,6 +33,7 @@ export const getPosts = async (req, res) => {
     sort = "-createdAt",
   } = req.query;
 
+  // Convert pagination values to numbers
   const pageNumber = Number(page);
   const limitNumber = Number(limit);
 
@@ -50,12 +52,49 @@ export const getPosts = async (req, res) => {
   // Prevent excessively large requests
   const safeLimit = Math.min(limitNumber, 100);
 
+  // Allowed sorting fields
+  const allowedSortFields = ["createdAt", "title", "category"];
+
+  // Validate sort value
+  if (typeof sort !== "string") {
+    return res.status(400).json({
+      message: "Invalid sort field",
+    });
+  }
+
+  const sortField = sort.startsWith("-") ? sort.slice(1) : sort;
+
+  if (!allowedSortFields.includes(sortField)) {
+    return res.status(400).json({
+      message: "Invalid sort field",
+    });
+  }
+
+  // Determine sort direction
+  const sortOrder = sort.startsWith("-") ? -1 : 1;
+
+  // Build a safe sort object
+  const safeSort = {
+    [sortField]: sortOrder,
+  };
+
+  // Build filters
   const filter = {};
 
   if (search) {
     filter.$or = [
-      { title: { $regex: search, $options: "i" } },
-      { content: { $regex: search, $options: "i" } },
+      {
+        title: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        content: {
+          $regex: search,
+          $options: "i",
+        },
+      },
     ];
   }
 
@@ -64,18 +103,27 @@ export const getPosts = async (req, res) => {
   }
 
   if (author) {
+    if (!mongoose.Types.ObjectId.isValid(author)) {
+      return res.status(400).json({
+        message: "Invalid author ID",
+      });
+    }
+
     filter.author = author;
   }
 
+  // Calculate pagination offset
   const skip = (pageNumber - 1) * safeLimit;
 
+  // Fetch posts
   const posts = await postModel
     .find(filter)
     .populate("author", "name email")
-    .sort(sort)
+    .sort(safeSort)
     .skip(skip)
     .limit(safeLimit);
 
+  // Get total number of matching posts
   const total = await postModel.countDocuments(filter);
 
   res.status(200).json({
@@ -93,9 +141,13 @@ export const getPosts = async (req, res) => {
 export const getPost = async (req, res) => {
   const { id } = req.params;
 
-  const post = await postModel
-    .findById(id)
-    .populate("author", "name email");
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid post ID",
+    });
+  }
+
+  const post = await postModel.findById(id).populate("author", "name email");
 
   if (!post) {
     return res.status(404).json({
@@ -116,7 +168,13 @@ export const getPost = async (req, res) => {
 // Update Post
 export const updatePost = async (req, res) => {
   const { id } = req.params;
-  const { title, content, category, tags, isPublished } = req.body;
+
+  // Validate Post ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid post ID",
+    });
+  }
 
   const post = await postModel.findById(id);
 
@@ -127,21 +185,39 @@ export const updatePost = async (req, res) => {
   }
 
   // Owner or Admin only
-  if (
-    post.author.toString() !== req.user.id &&
-    req.user.role !== "admin"
-  ) {
+  const isOwner = post.author.toString() === req.user.id;
+  const isAdmin = req.user.role === "admin";
+
+  if (!isOwner && !isAdmin) {
     return res.status(403).json({
       message: "Forbidden",
     });
   }
 
-  post.title = title;
-  post.content = content;
-  post.category = category;
-  post.tags = tags;
-  post.isPublished = isPublished;
+  // Update only fields that were provided
+  const { title, content, category, tags, isPublished } = req.body;
 
+  if (title !== undefined) {
+    post.title = title;
+  }
+
+  if (content !== undefined) {
+    post.content = content;
+  }
+
+  if (category !== undefined) {
+    post.category = category;
+  }
+
+  if (tags !== undefined) {
+    post.tags = tags;
+  }
+
+  if (isPublished !== undefined) {
+    post.isPublished = isPublished;
+  }
+
+  // Update cover image if a new one was uploaded
   if (req.file) {
     post.coverImage = req.file.path;
   }
@@ -158,6 +234,13 @@ export const updatePost = async (req, res) => {
 export const deletePost = async (req, res) => {
   const { id } = req.params;
 
+  // Validate Post ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "Invalid post ID",
+    });
+  }
+
   const post = await postModel.findById(id);
 
   if (!post) {
@@ -167,10 +250,10 @@ export const deletePost = async (req, res) => {
   }
 
   // Owner or Admin only
-  if (
-    post.author.toString() !== req.user.id &&
-    req.user.role !== "admin"
-  ) {
+  const isOwner = post.author.toString() === req.user.id;
+  const isAdmin = req.user.role === "admin";
+
+  if (!isOwner && !isAdmin) {
     return res.status(403).json({
       message: "Forbidden",
     });
